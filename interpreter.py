@@ -173,9 +173,8 @@ class Power(Operation):
         if errors:
             return errors
 
-        if -1 < self.args[1].get_value(env) < 1:
-            if self.args[0].get_value(env) < 0:
-                return ["complex numbers not supported"]
+        if self.args[0].get_value(env) < 0 and not self.args[1].get_value(env).is_integer():
+            return ["complex numbers not supported"]
 
         return []
 
@@ -380,13 +379,19 @@ class Function:
         return sorted(self.val.get_variables())
 
     def get_errors(self, env: dict):
-        return self.val.get_errors(env)
+        try:
+            return self.val.get_errors(env)
+        except OverflowError:
+            return ["overflow"]
 
     def execute(self, env: dict):
         if (errors := self.get_errors(env)):
             return False, errors
 
-        return True, self.val.get_value(env)
+        try:
+            return True, self.val.get_value(env)
+        except OverflowError:
+            return False, ["overflow"]
 
     @classmethod
     def compile(cls, name: str, text: str):
