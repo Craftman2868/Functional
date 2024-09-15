@@ -30,9 +30,10 @@ class App(Eventable):
         self.updated = False
         self.running = False
 
+        self.cursor = 0
         self.f_str = ""
         self.f = None
-        self.fw = 50
+        self.fw = 39
         self.error = None
 
         self.bg_updated = False
@@ -117,6 +118,8 @@ class App(Eventable):
                 self.error = "undefined variable(s): " + ", ".join(sorted(set(vars) - {"x"}))
             else:
                 self.error = None
+
+        log(self.f or self.error)
 
     def x_axis(self):
         if self.dx == 0:
@@ -207,7 +210,11 @@ class App(Eventable):
             sy_float = sy - sy_int
 
             if 0 <= sy_int < self.screen.h:
-                self.screen.set_at(sx, sy_int, get_char(0.5 - sy_float))
+                if self.dx > 10 and x.is_integer():
+                    char = "x"
+                else:
+                    char = get_char(0.5 - sy_float)
+                self.screen.set_at(sx, sy_int, char)
 
     def render(self):
         log_count("===============[ Render ]===============", id="render")
@@ -217,15 +224,14 @@ class App(Eventable):
             self.screen.fill(" ")
             self.draw_bg()
             self.draw_f()
-        else:
-            self.screen.rect(0, self.screen.h-2, self.fw, 2)
+        self.screen.rect(0, self.screen.h-2, self.fw + 1, 2)
         self.write_f()
 
         self.terminal.hide_cursor()
         self.terminal.home()
         self.screen.draw(self.terminal)
 
-        self.terminal.set_cursor(5 + len(self.f_str), self.screen.h-2)
+        self.terminal.set_cursor(5 + self.cursor, self.screen.h-2)
         self.terminal.show_cursor()
 
         self.terminal.flush()
@@ -270,6 +276,32 @@ class App(Eventable):
 
         self.quit()
 
+    def insert(self, text: str):
+        if not text:
+            return
+
+        self.updated = True
+
+        self.f_str = self.f_str[:self.cursor] + text + self.f_str[self.cursor:]
+        self.cursor += len(text)
+        self.update_f()
+
+    def erase(self, n: int = 1):
+        if not self.cursor or not n:
+            return ""
+
+        self.updated = True
+
+        c = self.f_str[self.cursor-1]
+
+        self.f_str = self.f_str[:self.cursor-1] + self.f_str[self.cursor:]
+        self.cursor -= 1
+
+        if n == 1:
+            self.update_f()
+
+        return self.erase(n - 1) + c
+
     # ========[ Event listeners ]========
 
     def on_key(self, ev: KeyEvent):
@@ -296,22 +328,41 @@ class App(Eventable):
                 self.dy += 1
             case "Y" if ev.alt:
                 self.dy -= 1
-            case c if c in printable and not ev.alt:
-                self.f_str += c
-                self.update_f()
-            case "\x7f":
-                if not self.f_str:
+            case "left":
+                if self.cursor == 0:
                     return
-                self.f_str = self.f_str[:-1]
-                self.update_f()
+                self.cursor -= 1
+            case "right":
+                if self.cursor == len(self.f_str):
+                    return
+                self.cursor += 1
+            case "home":
+                if self.cursor == 0:
+                    return
+                self.cursor = 0
+            case "end":
+                if self.cursor == len(self.f_str):
+                    return
+                self.cursor = len(self.f_str)
+            case c if c in printable and not ev.alt:
+                self.insert(c)
+                return
+            case "\x7f":
+                self.erase(1)
+                return
+            case "delete":
+                if self.cursor == len(self.f_str):
+                    return
+                self.cursor += 1
+                self.erase(1)
+                return
             case _:
                 return
 
         self.updated = True
 
     def on_paste(self, ev: PasteEvent):
-        self.f_str += ev.text
-        self.update_f()
+        self.insert(ev.text)
 
     def on_mouse(self, ev: MouseEvent):
         match ev.button:
@@ -324,7 +375,7 @@ class App(Eventable):
                 self.mouse = None
             case Terminal.SCROLL_UP:
                 if not ev.alt:
-                    self.origin = self.origin[0] - (ev.x - self.origin[0]) // 2, self.origin[1] - (ev.y - self.origin[1]) // 2
+                    self.origin = self.origin[0] - (ev.x - self.origin[0]), self.origin[1] - (ev.y - self.origin[1])
                 self.dx *= 2
                 self.dy *= 2
                 self.updated = True
