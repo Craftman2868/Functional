@@ -15,7 +15,12 @@ from sys import argv
 from math import isfinite
 
 
+NO_TILDE = False
+
+
 CHARS = '_,..-~*"^`'
+if NO_TILDE:
+    CHARS = CHARS.replace("~", "-")
 DEFAULT_ZOOM = 4, 2
 
 
@@ -43,7 +48,7 @@ class App(Eventable):
         self.fw = 39
         self.error = None
 
-        self.bg_updated = False
+        self.graph_updated = False
 
         self.show_axis = True
         self.show_orig = True
@@ -124,6 +129,8 @@ class App(Eventable):
         self.handle_events()
 
     def update_f(self):
+        old_f = self.f is not None
+
         try:
             self.f = Function.compile("f", self.f_str)
         except (TokenizationError, CompilationError) as e:
@@ -135,6 +142,10 @@ class App(Eventable):
                 self.error = "undefined variable(s): " + ", ".join(sorted(set(vars) - {"x"}))
             else:
                 self.error = None
+
+        if old_f or self.f is not None:
+            self.graph_updated = True
+        self.updated = True
 
         log(self.f or self.error)
 
@@ -252,24 +263,25 @@ class App(Eventable):
         if fx is None:
             fx = ""
         else:
-            fx = f", f(x)={fx:.4f}"
+            fx = f", f(x)={fx}"
 
-        text = f"x={self.pointer[0]:.4f}, y={self.pointer[1]:.4f}" + fx
+        text = f"x={self.pointer[0]}, y={self.pointer[1]}" + fx
 
         self.screen.write_at(self.screen.w-1-len(text), self.screen.h-1, text)
 
+    @log_func(time=10, log_self=False, log_result=False, inline=True)
     def render(self):
         log_count("===============[ Render ]===============", id="render")
 
-        # if self.bg_updated:
-        if True:
+        if self.graph_updated:
+            log("Draw graph")
             self.screen.fill(" ")
             self.draw_bg()
             self.draw_f()
+            self.draw_pointer()
+
         self.screen.rect(0, self.screen.h-2, self.fw + 1, 2)
         self.write_f()
-
-        self.draw_pointer()
 
         self.terminal.hide_cursor()
         self.terminal.home()
@@ -289,7 +301,7 @@ class App(Eventable):
 
         self.running = True
         self.updated = True
-        self.bg_updated = True
+        self.graph_updated = True
         self.call_event("run")
 
         self.update()
@@ -316,15 +328,13 @@ class App(Eventable):
                 break
 
             self.updated = False
-            self.bg_updated = False
+            self.graph_updated = False
 
         self.quit()
 
     def insert(self, text: str):
         if not text:
             return
-
-        self.updated = True
 
         self.f_str = self.f_str[:self.cursor] + text + self.f_str[self.cursor:]
         self.cursor += len(text)
@@ -333,8 +343,6 @@ class App(Eventable):
     def erase(self, n: int = 1):
         if not self.cursor or not n:
             return ""
-
-        self.updated = True
 
         c = self.f_str[self.cursor-1]
 
@@ -352,12 +360,15 @@ class App(Eventable):
         match ev.key:
             case CTRL.c | CTRL.d | CTRL.q:
                 self.stop()
+            case CTRL.g:
+                self.graph_updated = True  # refresh graph
             case CTRL.r:
                 pass  # refresh
             case CTRL.space:
                 self.origin = (self.screen.w//2, self.screen.h//2)
                 self.pointer = (0, 0)
                 self.dx, self.dy = DEFAULT_ZOOM
+                self.graph_updated = True
             case CTRL.f:
                 x = self.pointer[0]
                 fx = self.calc_f(x)
@@ -368,20 +379,29 @@ class App(Eventable):
                 self.pointer = x, fx
                 if not self.isVisible(*self.pointer):
                     self.focus(*self.pointer)
+
+                self.graph_updated = True
             case "b" if ev.alt:
                 self.show_bg = not self.show_bg
+                self.graph_updated = True
             case "a" if ev.alt:
                 self.show_axis = not self.show_axis
+                self.graph_updated = True
             case "o" if ev.alt:
                 self.show_orig = not self.show_orig
+                self.graph_updated = True
             case "x" if ev.alt:
                 self.dx += 1
+                self.graph_updated = True
             case "X" if ev.alt:
                 self.dx -= 1
+                self.graph_updated = True
             case "y" if ev.alt:
                 self.dy += 1
+                self.graph_updated = True
             case "Y" if ev.alt:
                 self.dy -= 1
+                self.graph_updated = True
             case "left":
                 if self.cursor == 0:
                     return
@@ -398,6 +418,8 @@ class App(Eventable):
                 if self.cursor == len(self.f_str):
                     return
                 self.cursor = len(self.f_str)
+            case "\t" | "\n" | "\r":
+                return
             case c if c in printable and not ev.alt:
                 self.insert(c)
                 return
@@ -425,10 +447,12 @@ class App(Eventable):
                     self.origin = self.origin[0] - self.mouse[0] + ev.x, self.origin[1] - self.mouse[1] + ev.y
                 self.pointer = self.screenToX(ev.x), self.screenToY(ev.y)
                 self.updated = True
+                self.graph_updated = True
                 self.mouse = (ev.x, ev.y)
             case Terminal.BUTTON_RIGHT:
                 self.pointer = self.screenToX(ev.x), self.screenToY(ev.y)
                 self.updated = True
+                self.graph_updated = True
             case Terminal.BUTTON_RELEASE:
                 self.mouse = None
             case Terminal.SCROLL_UP:
@@ -437,16 +461,19 @@ class App(Eventable):
                 self.dx *= 2
                 self.dy *= 2
                 self.updated = True
+                self.graph_updated = True
             case Terminal.SCROLL_DOWN:
                 if not ev.alt:
                     self.origin = self.origin[0] + (ev.x - self.origin[0]) // 2, self.origin[1] + (ev.y - self.origin[1]) // 2
                 self.dx /= 2
                 self.dy /= 2
                 self.updated = True
+                self.graph_updated = True
 
     def on_resize(self, ev: ResizeEvent):
         self.screen = Canvas(ev.w - 1, ev.h - 1)
         self.updated = True
+        self.graph_updated = True
         self.terminal.clear()
 
     def on_error(self, ev: ErrorEvent):
