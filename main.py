@@ -10,8 +10,13 @@ from string import printable
 
 from log import *
 
+from sys import argv
+
+from math import isfinite
+
 
 CHARS = '_,..-~*"^`'
+DEFAULT_ZOOM = 4, 2
 
 
 def get_char(n: float):
@@ -19,7 +24,7 @@ def get_char(n: float):
 
 
 class App(Eventable):
-    def __init__(self, w: int, h: int):
+    def __init__(self, w: int, h: int, f: str = None):
         super().__init__()
 
         self.terminal = Terminal(self.event_queue)
@@ -30,9 +35,11 @@ class App(Eventable):
         self.updated = False
         self.running = False
 
-        self.cursor = 0
-        self.f_str = ""
+        self.f_str = f or ""
+        self.cursor = len(self.f_str)
         self.f = None
+        if self.f_str:
+            self.update_f()
         self.fw = 39
         self.error = None
 
@@ -42,10 +49,10 @@ class App(Eventable):
         self.show_orig = True
 
         self.origin = (self.screen.w//2, self.screen.h//2)
-        self.dx = 2
-        self.dy = 1
+        self.dx, self.dy = DEFAULT_ZOOM
 
         self.mouse = None
+        self.pointer = (0, 0)
 
     @property
     def show_bg(self):
@@ -56,23 +63,33 @@ class App(Eventable):
         self.show_axis = value
         self.show_orig = value
 
-    def screenToX(self, x: int):
+    def screenToX(self, x: int | float):
         if self.dx == 0:
             return 0
 
         return (x - self.origin[0]) / self.dx
 
-    def screenToY(self, y: int):
+    def screenToY(self, y: int | float):
         if self.dy == 0:
             return 0
 
         return (self.origin[1] - y) / self.dy
 
-    def xToScreen(self, x: int):
+    def xToScreen(self, x: float):
         return (x * self.dx) + self.origin[0]
 
-    def yToScreen(self, y: int):
+    def yToScreen(self, y: float):
         return self.origin[1] - (y * self.dy)
+
+    def isVisible(self, x: float, y: float):
+        return 0 <= self.xToScreen(x) < self.screen.w and 0 <= self.yToScreen(y) < self.screen.h
+
+    def focus(self, x: float, y: float):
+        self.origin = (
+            round(-(x * self.dx - self.screen.w / 2)),
+            round(y * self.dy + self.screen.h / 2)
+        )
+        log("Orig", self.origin)
 
     def stop(self):
         self.running = False
@@ -189,6 +206,10 @@ class App(Eventable):
             log(f"Errors for f({x}):", *res)
             return None
 
+        if not isfinite(res):
+            log("Warning for f({x}): found", res)
+            return None
+
         return res
 
     def draw_f(self):
@@ -206,6 +227,10 @@ class App(Eventable):
                 continue
 
             sy = self.yToScreen(y)
+
+            if not isfinite(sy):
+                continue
+
             sy_int = round(sy)
             sy_float = sy - sy_int
 
@@ -215,6 +240,23 @@ class App(Eventable):
                 else:
                     char = get_char(0.5 - sy_float)
                 self.screen.set_at(sx, sy_int, char)
+
+    def draw_pointer(self):
+        if not self.isVisible(*self.pointer):
+            self.pointer = self.screenToX(self.screen.w/2), self.screenToY(self.screen.h/2)
+
+        self.screen.set_at(round(self.xToScreen(self.pointer[0])), round(self.yToScreen(self.pointer[1])), "o")
+
+        fx = self.calc_f(self.pointer[0])
+
+        if fx is None:
+            fx = ""
+        else:
+            fx = f", f(x)={fx:.4f}"
+
+        text = f"x={self.pointer[0]:.4f}, y={self.pointer[1]:.4f}" + fx
+
+        self.screen.write_at(self.screen.w-1-len(text), self.screen.h-1, text)
 
     def render(self):
         log_count("===============[ Render ]===============", id="render")
@@ -227,11 +269,13 @@ class App(Eventable):
         self.screen.rect(0, self.screen.h-2, self.fw + 1, 2)
         self.write_f()
 
+        self.draw_pointer()
+
         self.terminal.hide_cursor()
         self.terminal.home()
         self.screen.draw(self.terminal)
 
-        self.terminal.set_cursor(5 + self.cursor, self.screen.h-2)
+        self.terminal.set_cursor(min(5 + self.cursor, self.fw), self.screen.h-2)
         self.terminal.show_cursor()
 
         self.terminal.flush()
@@ -312,8 +356,18 @@ class App(Eventable):
                 pass  # refresh
             case CTRL.space:
                 self.origin = (self.screen.w//2, self.screen.h//2)
-                self.dx = 2
-                self.dy = 1
+                self.pointer = (0, 0)
+                self.dx, self.dy = DEFAULT_ZOOM
+            case CTRL.f:
+                x = self.pointer[0]
+                fx = self.calc_f(x)
+
+                if fx is None:
+                    return
+
+                self.pointer = x, fx
+                if not self.isVisible(*self.pointer):
+                    self.focus(*self.pointer)
             case "b" if ev.alt:
                 self.show_bg = not self.show_bg
             case "a" if ev.alt:
@@ -369,8 +423,12 @@ class App(Eventable):
             case Terminal.BUTTON_LEFT:
                 if ev.hold and self.mouse:
                     self.origin = self.origin[0] - self.mouse[0] + ev.x, self.origin[1] - self.mouse[1] + ev.y
-                    self.updated = True
+                self.pointer = self.screenToX(ev.x), self.screenToY(ev.y)
+                self.updated = True
                 self.mouse = (ev.x, ev.y)
+            case Terminal.BUTTON_RIGHT:
+                self.pointer = self.screenToX(ev.x), self.screenToY(ev.y)
+                self.updated = True
             case Terminal.BUTTON_RELEASE:
                 self.mouse = None
             case Terminal.SCROLL_UP:
@@ -395,14 +453,14 @@ class App(Eventable):
         log_exception(ev.exc)
 
 
-def main():
-    app = App(80, 30)
+def main(f: str = None):
+    app = App(80, 30, f)
 
     app.run()
 
 if __name__ == "__main__":
     try:
         start_log()
-        main()
+        main(" ".join(argv[1:]))
     finally:
         stop_log()
