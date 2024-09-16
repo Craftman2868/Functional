@@ -175,7 +175,10 @@ class Multiplication(Operation):
 class ImplicitMultiplication(Multiplication):
     @property
     def expr(self):
-        return f"{self.args[0].pexpr}({self.args[1].expr})"
+        if not isinstance(self.args[0], Variable):
+            return super().expr
+
+        return f"{self.args[0].expr}({self.args[1].expr})"
 
     def get_value(self, env: dict):
         if self.ignore(env):
@@ -487,6 +490,8 @@ class Function(BaseFunction):
             return self.val.get_errors(kwargs)
         except OverflowError:
             return ["overflow"]
+        except Exception as e:
+            return [repr(e)]
 
     def execute(self, *args, **kwargs):
         assert not args
