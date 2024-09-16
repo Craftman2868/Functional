@@ -271,12 +271,12 @@ class App(Eventable):
 
     def draw_xscale(self):
         i = -10
-        while (w := round(10**(-i) * self.dx)) > 15:
+        while (w := round(10**(-i) * self.dx)) > 20:
             i += 1
 
-        text = "x: " + "-" * w + f" {10**(-i)}"
+        text = f"{10**(-i)} " + "-" * w + " x "
 
-        self.screen.write_at(self.screen.w-1-len(text), self.screen.h-2, text)
+        self.screen.write_at(self.screen.w-2-len(text), self.screen.h-2, text)
 
     def draw_yscale(self):
         i = -10
@@ -285,10 +285,12 @@ class App(Eventable):
 
         s = Canvas(1, h, "|")
 
-        self.screen.blit(s, self.screen.w-1, self.screen.h-2-h)
+        self.screen.blit(s, self.screen.w-2, self.screen.h-2-h)
 
-        text = f"y: {10**(-i)}"
-        self.screen.write_at(self.screen.w-2-len(text), self.screen.h-4, text)
+        text = f"{10**(-i)}"
+        self.screen.write_at(self.screen.w-1-len(text), self.screen.h-3-h, text)
+
+        self.screen.set_at(self.screen.w-2, self.screen.h-2, "y")
 
     def draw_scale(self):
         self.draw_xscale()
@@ -380,6 +382,25 @@ class App(Eventable):
 
         return self.erase(n - 1) + c
 
+    def zoom_x(self, n: float = 1):
+        self.dx *= 2**n
+
+    def zoom_y(self, n: float = 1):
+        self.dy *= 2**n
+
+    def zoom(self, n: float = 1):
+        self.zoom_x(n)
+        self.zoom_y(n)
+
+    def unzoom_x(self, n: float = 1):
+        self.zoom_x(-n)
+
+    def unzoom_y(self, n: float = 1):
+        self.zoom_y(-n)
+
+    def unzoom(self, n: float = 1):
+        return self.zoom(-n)
+
     # ========[ Event listeners ]========
 
     def on_key(self, ev: KeyEvent):
@@ -417,16 +438,16 @@ class App(Eventable):
                 self.show_orig = not self.show_orig
                 self.graph_updated = True
             case "x" if ev.alt:
-                self.dx += 1
+                self.zoom_x()
                 self.graph_updated = True
             case "X" if ev.alt:
-                self.dx -= 1
+                self.unzoom_x()
                 self.graph_updated = True
             case "y" if ev.alt:
-                self.dy += 1
+                self.zoom_y()
                 self.graph_updated = True
             case "Y" if ev.alt:
-                self.dy -= 1
+                self.unzoom_y()
                 self.graph_updated = True
             case "left":
                 if self.cursor == 0:
@@ -484,15 +505,13 @@ class App(Eventable):
             case Terminal.SCROLL_UP:
                 if not ev.alt:
                     self.origin = self.origin[0] - (ev.x - self.origin[0]), self.origin[1] - (ev.y - self.origin[1])
-                self.dx *= 2
-                self.dy *= 2
+                self.zoom()
                 self.updated = True
                 self.graph_updated = True
             case Terminal.SCROLL_DOWN:
                 if not ev.alt:
                     self.origin = self.origin[0] + (ev.x - self.origin[0]) // 2, self.origin[1] + (ev.y - self.origin[1]) // 2
-                self.dx /= 2
-                self.dy /= 2
+                self.unzoom()
                 self.updated = True
                 self.graph_updated = True
 
