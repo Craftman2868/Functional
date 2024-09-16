@@ -269,6 +269,11 @@ class App(Eventable):
 
         self.screen.write_at(self.screen.w-1-len(text), self.screen.h-1, text)
 
+    def draw_scale(self):
+        text = f"dx={self.dx}, dy={self.dy}"
+
+        self.screen.write_at(self.screen.w-1-len(text), self.screen.h-2, text)
+
     @log_func(time=10, log_self=False, log_result=False, inline=True)
     def render(self):
         log_count("===============[ Render ]===============", id="render")
@@ -279,6 +284,7 @@ class App(Eventable):
             self.draw_bg()
             self.draw_f()
             self.draw_pointer()
+            self.draw_scale()
 
         self.screen.rect(0, self.screen.h-2, self.fw + 1, 2)
         self.write_f()
@@ -418,7 +424,7 @@ class App(Eventable):
                 if self.cursor == len(self.f_str):
                     return
                 self.cursor = len(self.f_str)
-            case "\t" | "\n" | "\r":
+            case "\t" | "\n" | "\r" | "\x0b" | "\x0c":
                 return
             case c if c in printable and not ev.alt:
                 self.insert(c)
