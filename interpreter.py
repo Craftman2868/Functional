@@ -173,8 +173,14 @@ class Power(Operation):
         if errors:
             return errors
 
-        if self.args[0].get_value(env) < 0 and not self.args[1].get_value(env).is_integer():
+        a0 = self.args[0].get_value(env)
+        a1 = self.args[1].get_value(env)
+
+        if a0 < 0 and not a1.is_integer():
             return ["complex numbers not supported"]
+
+        if a0 == 0 and a1 < 0:
+            return ["zero cannot be raised to a negative power"]
 
         return []
 
