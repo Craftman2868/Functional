@@ -45,7 +45,7 @@ class App(Eventable):
         self.f_str = f or ""
         self.cursor = len(self.f_str)
         self.f = None
-        self.fw = 39
+        self.fw = self.screen.w // 3
         self.error = None
 
         self.graph_updated = False
@@ -162,11 +162,11 @@ class App(Eventable):
             return
 
         if self.dx == 1:
-            return Canvas(self.screen.w-1, 1, "+")
+            return Canvas(self.screen.w, 1, "+")
 
-        cv = Canvas(self.screen.w-1, 1, "-")
+        cv = Canvas(self.screen.w, 1, "-")
 
-        for sx in range(self.screen.w-1):
+        for sx in range(self.screen.w):
             x = self.screenToX(sx)
 
             if x.is_integer():
@@ -179,11 +179,11 @@ class App(Eventable):
             return
 
         if self.dy == 1:
-            return Canvas(1, self.screen.h-1, "+")
+            return Canvas(1, self.screen.h, "+")
 
-        cv = Canvas(1, self.screen.h-1, "|")
+        cv = Canvas(1, self.screen.h, "|")
 
-        for sy in range(self.screen.h-1):
+        for sy in range(self.screen.h):
             y = self.screenToY(sy)
 
             if y.is_integer():
