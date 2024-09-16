@@ -227,8 +227,12 @@ class App(Eventable):
             log(f"Errors for f({x}):", *res)
             return None
 
-        if not isfinite(res):
-            log("Warning for f({x}): found", res)
+        try:
+            if not isfinite(res):
+                log(f"Warning for f({x}): found", res)
+                return None
+        except OverflowError:
+            log(f"Warning for f({x}): overflow")
             return None
 
         return res
