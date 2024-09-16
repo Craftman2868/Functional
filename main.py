@@ -269,10 +269,30 @@ class App(Eventable):
 
         self.screen.write_at(self.screen.w-1-len(text), self.screen.h-1, text)
 
-    def draw_scale(self):
-        text = f"dx={self.dx}, dy={self.dy}"
+    def draw_xscale(self):
+        i = -10
+        while (w := round(10**(-i) * self.dx)) > 15:
+            i += 1
+
+        text = "x: " + "-" * w + f" {10**(-i)}"
 
         self.screen.write_at(self.screen.w-1-len(text), self.screen.h-2, text)
+
+    def draw_yscale(self):
+        i = -10
+        while (h := round(10**(-i) * self.dy)) > 10:
+            i += 1
+
+        s = Canvas(1, h, "|")
+
+        self.screen.blit(s, self.screen.w-1, self.screen.h-2-h)
+
+        text = f"y: {10**(-i)}"
+        self.screen.write_at(self.screen.w-2-len(text), self.screen.h-4, text)
+
+    def draw_scale(self):
+        self.draw_xscale()
+        self.draw_yscale()
 
     @log_func(time=10, log_self=False, log_result=False, inline=True)
     def render(self):
