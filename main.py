@@ -45,8 +45,6 @@ class App(Eventable):
         self.f_str = f or ""
         self.cursor = len(self.f_str)
         self.f = None
-        if self.f_str:
-            self.update_f()
         self.fw = 39
         self.error = None
 
@@ -60,6 +58,9 @@ class App(Eventable):
 
         self.mouse = None
         self.pointer = (0, 0)
+
+        if self.f_str:
+            self.update_f()
 
     @property
     def show_bg(self):
