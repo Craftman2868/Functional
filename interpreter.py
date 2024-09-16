@@ -1,5 +1,7 @@
 from io import StringIO
 
+import math
+
 
 """
 TODO: priority
@@ -7,7 +9,16 @@ TODO: priority
 """
 
 
+@lambda cls: cls()
+class IgnoreMe:
+    def __repr__(self):
+        return "IgnoreMe"
+
+
 class Value:
+    def ignore(self, env: dict):
+        return False
+
     def get_variables(self):
         return set()
 
@@ -45,6 +56,10 @@ class VariableError(Exception): pass
 class Variable(Value):
     def __init__(self, name: str):
         self.name = name
+        self.accept_function = False
+
+    def ignore(self, env: dict):
+        return env.get(self.name) is IgnoreMe
 
     @property
     def expr(self):
@@ -59,6 +74,14 @@ class Variable(Value):
         if self.name not in env:
             return ["undefined variable: " + self.name]
 
+        val = env[self.name]
+
+        if val is IgnoreMe:
+            return []
+
+        if not self.accept_function and isinstance(val, NativeFunction):
+            return ["variable expected (got a function): " + self.name]
+
         return []
 
     def get_value(self, env: dict):
@@ -67,14 +90,23 @@ class Variable(Value):
 
         return env[self.name]
 
+    def is_func(self, env: dict):
+        return isinstance(env.get(self.name), NativeFunction)
+
 
 class Operation(Value):
     def __init__(self, *args: Value):
         self.args = args
 
+    def ignore(self, env: dict):
+        return any(arg.ignore(env) for arg in self.args)
+
     @property
     def expr(self):
         raise NotImplementedError("Operation.expr should be overriden")
+
+    def get_args(self, env: dict):
+        return tuple(arg.get_value(env) for arg in self.args)
 
     def get_variables(self):
         res = set()
@@ -100,7 +132,10 @@ class Addition(Operation):
         return " + ".join(arg.expr for arg in self.args)
 
     def get_value(self, env: dict):
-        return sum(t.get_value(env) for t in self.args)
+        if self.ignore(env):
+            return IgnoreMe
+
+        return sum(self.get_args(env))
 
 
 class Substraction(Operation):
@@ -112,7 +147,12 @@ class Substraction(Operation):
         return " - ".join(arg.expr for arg in self.args)
 
     def get_value(self, env: dict):
-        return self.args[0].get_value(env) - self.args[1].get_value(env)
+        if self.ignore(env):
+            return IgnoreMe
+
+        a0, a1 = self.get_args(env)
+
+        return a0 - a1
 
 
 class Multiplication(Operation):
@@ -124,7 +164,27 @@ class Multiplication(Operation):
         return " * ".join(arg.pexpr for arg in self.args)
 
     def get_value(self, env: dict):
-        return self.args[0].get_value(env) * self.args[1].get_value(env)
+        if self.ignore(env):
+            return IgnoreMe
+
+        a0, a1 = self.get_args(env)
+
+        return a0 * a1
+
+
+class ImplicitMultiplication(Multiplication):
+    @property
+    def expr(self):
+        return f"{self.args[0].pexpr}({self.args[1].expr})"
+
+    def get_value(self, env: dict):
+        if self.ignore(env):
+            return IgnoreMe
+
+        if isinstance(self.args[0], Variable) and self.args[0].is_func(env):
+            return self.args[0].get_value(env).execute(self.args[1].get_value(env))
+
+        return super().get_value(env)
 
 
 class Division(Operation):
@@ -147,7 +207,12 @@ class Division(Operation):
         return []
 
     def get_value(self, env: dict):
-        return self.args[0].get_value(env) / self.args[1].get_value(env)
+        if self.ignore(env):
+            return IgnoreMe
+
+        a0, a1 = self.get_args(env)
+
+        return a0 / a1
 
 
 class Modulo(Division):
@@ -156,7 +221,12 @@ class Modulo(Division):
         return " % ".join(arg.pexpr for arg in self.args)
 
     def get_value(self, env: dict):
-        return self.args[0].get_value(env) % self.args[1].get_value(env)
+        if self.ignore(env):
+            return IgnoreMe
+
+        a0, a1 = self.get_args(env)
+
+        return a0 % a1
 
 
 class Power(Operation):
@@ -176,6 +246,9 @@ class Power(Operation):
         a0 = self.args[0].get_value(env)
         a1 = self.args[1].get_value(env)
 
+        if a0 is IgnoreMe or a1 is IgnoreMe:
+            return []
+
         if a0 < 0 and not a1.is_integer():
             return ["complex numbers not supported"]
 
@@ -185,7 +258,12 @@ class Power(Operation):
         return []
 
     def get_value(self, env: dict):
-        return self.args[0].get_value(env) ** self.args[1].get_value(env)
+        if self.ignore(env):
+            return IgnoreMe
+
+        a0, a1 = self.get_args(env)
+
+        return a0 ** a1
 
 
 class TokenizationError(Exception): pass
@@ -266,7 +344,9 @@ def compile_tokens(tokens, parenthesis: bool = False):
             val = n
         else:
             if op is None:
-                op = Multiplication
+                op = ImplicitMultiplication
+                if isinstance(val, Variable):
+                    val.accept_function = True
             val = op(val, n)
             op = None
 
@@ -372,7 +452,23 @@ def compile_tokens(tokens, parenthesis: bool = False):
     return val
 
 
-class Function:
+class BaseFunction:
+    def __init__(self, name: str):
+        self.name = name
+
+    def get_variables(self):
+        return []
+
+    def get_errors(self, *args, **kwargs):
+        raise NotImplementedError("BaseFunction.get_errors should be overriden")
+
+    def execute(self, *args, **kwargs):
+        raise NotImplementedError("BaseFunction.execute should be overriden")
+
+    def __repr__(self):
+        return f"{self.name}({', '.join(self.get_variables())})"
+
+class Function(BaseFunction):
     def __init__(self, name: str, val: Value):
         self.name = name
         self.val = val
@@ -384,20 +480,26 @@ class Function:
     def get_variables(self):
         return sorted(self.val.get_variables())
 
-    def get_errors(self, env: dict):
+    def get_errors(self, *args, **kwargs):
+        assert not args
+
         try:
-            return self.val.get_errors(env)
+            return self.val.get_errors(kwargs)
         except OverflowError:
             return ["overflow"]
 
-    def execute(self, env: dict):
-        if (errors := self.get_errors(env)):
+    def execute(self, *args, **kwargs):
+        assert not args
+
+        if (errors := self.get_errors(**kwargs)):
             return False, errors
 
         try:
-            return True, self.val.get_value(env)
+            return True, self.val.get_value(kwargs)
         except OverflowError:
             return False, ["overflow"]
+        except Exception as e:
+            return False, [repr(e)]
 
     @classmethod
     def compile(cls, name: str, text: str):
@@ -413,4 +515,57 @@ class Function:
         return cls(name, val)
 
     def __repr__(self):
-        return f"{self.name}({', '.join(self.get_variables())}) = {self.expr}"
+        return f"{super().__repr__()} = {self.expr}"
+
+
+class NativeFunction(BaseFunction):
+    def __init__(self, name: str):
+        super().__init__(self)
+        self.func = None
+
+    def get_variables(self):
+        return []
+
+    def get_errors(self):
+        return []
+
+    def execute(self, *args, **kwargs):
+        return self.func(*args, **kwargs)
+
+    def __call__(self, func):
+        self.func = func
+
+
+class MathNativeFunction(NativeFunction):
+    def __init__(self, f):
+        super().__init__(f.__name__)
+        self.func = f
+
+    def get_variables(self):
+        return ["x"]
+
+    def execute(self, *args, **kwargs):
+        assert not kwargs
+
+        return super().execute(*args, **kwargs)
+
+    __call__ = object.__call__
+
+
+MATH_FUNCTIONS = {}
+MATH_VARIABLES = {}
+
+funcs = vars(math)
+funcs["abs"] = abs
+
+for n, v in funcs.items():
+    if n.startswith("_"):
+        continue
+
+    if callable(v):
+        f = MathNativeFunction(v)
+        MATH_FUNCTIONS[n] = f
+    else:
+        MATH_VARIABLES[n] = v
+
+MATH_ENV = MATH_FUNCTIONS | MATH_VARIABLES

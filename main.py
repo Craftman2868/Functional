@@ -3,7 +3,7 @@ from event.event import ResizeEvent, KeyEvent, ErrorEvent, PasteEvent, MouseEven
 
 from terminal import Terminal, CTRL
 
-from interpreter import Function, TokenizationError, CompilationError
+from interpreter import Function, TokenizationError, CompilationError, MATH_ENV, IgnoreMe
 from canvas import Canvas
 
 from string import printable
@@ -39,6 +39,8 @@ class App(Eventable):
         self.initialized = False
         self.updated = False
         self.running = False
+
+        self.env = MATH_ENV
 
         self.f_str = f or ""
         self.cursor = len(self.f_str)
@@ -137,11 +139,16 @@ class App(Eventable):
             self.f = None
             self.error = e.args[0]
         else:
-            if self.f and (vars := self.f.get_variables()) and vars != ["x"]:
+            self.error = None
+
+        if self.f is not None:
+            self.env["x"] = IgnoreMe
+
+            errors = self.f.get_errors(**self.env)
+
+            if errors:
+                self.error = errors[0]
                 self.f = None
-                self.error = "undefined variable(s): " + ", ".join(sorted(set(vars) - {"x"}))
-            else:
-                self.error = None
 
         if old_f or self.f is not None:
             self.graph_updated = True
@@ -211,7 +218,9 @@ class App(Eventable):
         if not self.f:
             return None
 
-        success, res = self.f.execute({"x": x})
+        self.env["x"] = x
+
+        success, res = self.f.execute(**self.env)
 
         if not success:
             log(f"Errors for f({x}):", *res)
