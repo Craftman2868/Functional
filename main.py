@@ -209,11 +209,11 @@ class App(Eventable):
             self.screen.set_at(*self.origin, "0")
 
     def write_f(self):
-        self.screen.write_at(0, self.screen.h-2, f"f(x)={self.f_str}"[-self.fw:])
+        self.screen.write_at(0, self.screen.h-2, f"> {self.f_str}"[-self.fw:])
         if self.error:
             self.screen.write_at(0, self.screen.h-1, ("Error: " + self.error)[-self.fw:])
         elif self.f:
-            self.screen.write_at(0, self.screen.h-1, repr(self.f)[-self.fw:])
+            self.screen.write_at(0, self.screen.h-1, f"f(x)={self.f.expr}"[-self.fw:])
 
     def calc_f(self, x: int):
         if not self.f:
@@ -329,7 +329,7 @@ class App(Eventable):
         self.terminal.home()
         self.screen.draw(self.terminal)
 
-        self.terminal.set_cursor(min(5 + self.cursor, self.fw), self.screen.h-2)
+        self.terminal.set_cursor(min(2 + self.cursor, self.fw), self.screen.h-2)
         self.terminal.show_cursor()
 
         self.terminal.flush()
