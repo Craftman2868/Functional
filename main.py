@@ -16,9 +16,9 @@ from math import isfinite
 
 
 NO_TILDE = False
-
-
-CHARS = '_,..-~*"^`'
+CHARS = '_,..-~*^"`'
+# CHARS = '_🭻🭺🭹🭸🭷‾'
+# CHARS = '_⎽⎼⎻⎺‾‾'
 if NO_TILDE:
     CHARS = CHARS.replace("~", "-")
 DEFAULT_ZOOM = 4, 2
@@ -47,6 +47,7 @@ class App(Eventable):
         self.f = None
         self.fw = self.screen.w // 3
         self.error = None
+        self.cache = {}
 
         self.graph_updated = False
 
@@ -155,6 +156,8 @@ class App(Eventable):
             self.graph_updated = True
         self.updated = True
 
+        self.cache.clear()
+
         log(self.f or self.error)
 
     def x_axis(self):
@@ -219,6 +222,9 @@ class App(Eventable):
         if not self.f:
             return None
 
+        if x in self.cache:
+            return self.cache[x]
+
         self.env["x"] = x
 
         success, res = self.f.execute(**self.env)
@@ -234,6 +240,8 @@ class App(Eventable):
         except OverflowError:
             log(f"Warning for f({x}): overflow")
             return None
+
+        self.cache[x] = res
 
         return res
 
