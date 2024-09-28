@@ -1,7 +1,7 @@
 from io import StringIO
 
 import math
-from typing import Self
+from typing import Any, Callable, Self, TypeVar
 
 
 @(lambda cls: cls())
@@ -11,6 +11,11 @@ class IgnoreMe:
 
 
 class Value:
+    def reset(self):
+        """Reset cache (only useful for Operation)
+        """
+        pass
+
     def ignore(self, env: dict):
         return False
 
@@ -92,6 +97,9 @@ class Variable(Value):
 class Parenthesis(Value):
     def __init__(self, value: Value):
         self.value = value
+    
+    def reset(self):
+        return self.value.reset()
 
     def ignore(self, env: dict):
         return self.value.ignore(env)
@@ -134,6 +142,12 @@ class Operation(Value, metaclass=OperationType):
 
     def __init__(self, *args: Value):
         self.args = args
+        self.cache = None
+
+    def reset(self):
+        for arg in self.args:
+            arg.reset()
+        self.cache = None
 
     def ignore(self, env: dict):
         return any(arg.ignore(env) for arg in self.args)
@@ -160,6 +174,18 @@ class Operation(Value, metaclass=OperationType):
         raise NotImplementedError("Operation.get_value() should be overriden")
 
 
+def op_cache(get_value: Callable[[Operation, dict], Any]):
+    def wrapper(self: Operation, env: dict):
+        if self.cache is not None:
+            return self.cache
+
+        self.cache = get_value(self, env)
+
+        return self.cache
+
+    return wrapper
+
+
 class Addition(Operation):
     priority = 1
 
@@ -170,6 +196,7 @@ class Addition(Operation):
     def expr(self):
         return " + ".join(arg.expr for arg in self.args)
 
+    @op_cache
     def get_value(self, env: dict):
         if self.ignore(env):
             return IgnoreMe
@@ -187,6 +214,7 @@ class Substraction(Operation):
     def expr(self):
         return " - ".join(arg.expr for arg in self.args)
 
+    @op_cache
     def get_value(self, env: dict):
         if self.ignore(env):
             return IgnoreMe
@@ -206,6 +234,7 @@ class Multiplication(Operation):
     def expr(self):
         return " * ".join(arg.pexpr for arg in self.args)
 
+    @op_cache
     def get_value(self, env: dict):
         if self.ignore(env):
             return IgnoreMe
@@ -231,6 +260,7 @@ class ImplicitMultiplication(Multiplication):
 
         return f"{self.args[0].expr}({self.args[1].expr})"
 
+    @op_cache
     def get_value(self, env: dict):
         if self.ignore(env):
             return IgnoreMe
@@ -262,6 +292,7 @@ class Division(Operation):
 
         return []
 
+    @op_cache
     def get_value(self, env: dict):
         if self.ignore(env):
             return IgnoreMe
@@ -278,6 +309,7 @@ class Modulo(Division):
     def expr(self):
         return " % ".join(arg.pexpr for arg in self.args)
 
+    @op_cache
     def get_value(self, env: dict):
         if self.ignore(env):
             return IgnoreMe
@@ -317,13 +349,18 @@ class Power(Operation):
 
         return []
 
+    @op_cache
     def get_value(self, env: dict):
+        print("pow:", *self.args)
         if self.ignore(env):
             return IgnoreMe
 
         a0, a1 = self.get_args(env)
 
         return a0 ** a1
+
+
+del op_cache
 
 
 class TokenizationError(Exception): pass
@@ -539,7 +576,7 @@ class BaseFunction:
 
 class Function(BaseFunction):
     def __init__(self, name: str, val: Value):
-        self.name = name
+        super().__init__(name)
         self.val = val
 
     @property
@@ -551,6 +588,8 @@ class Function(BaseFunction):
 
     def get_errors(self, *args, **kwargs):
         assert not args
+
+        self.val.reset()
 
         try:
             return self.val.get_errors(kwargs)
@@ -591,7 +630,7 @@ class Function(BaseFunction):
 
 class NativeFunction(BaseFunction):
     def __init__(self, name: str):
-        super().__init__(self)
+        super().__init__(name)
         self.func = None
 
     def get_variables(self):
