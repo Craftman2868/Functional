@@ -442,6 +442,16 @@ class App(Eventable):
                     self.focus(*self.pointer)
 
                 self.graph_updated = True
+            case CTRL.z:
+                if not ev.alt:
+                    self.origin = self.origin[0] - (round(self.xToScreen(self.pointer[0])) - self.origin[0]), self.origin[1] - (round(self.yToScreen(self.pointer[1])) - self.origin[1])
+                self.zoom()
+                self.graph_updated = True
+            case CTRL.u:
+                if not ev.alt:
+                    self.origin = self.origin[0] + (round(self.xToScreen(self.pointer[0])) - self.origin[0]) // 2, self.origin[1] + (round(self.yToScreen(self.pointer[1])) - self.origin[1]) // 2
+                self.unzoom()
+                self.graph_updated = True
             case "b" if ev.alt:
                 self.show_bg = not self.show_bg
                 self.graph_updated = True
