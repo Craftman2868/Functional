@@ -663,7 +663,7 @@ class Terminal(Eventable):
             text = text.replace(" ", "_")
         write(text, flush=flush)
 
-    def write_line(self, line: str, flush: bool = False):
+    def write_line(self, line: str = "", flush: bool = False):
         self.write(line + "\r\n", flush=flush)
 
     def write_at(self, x: int, y: int, text: str, flush: bool = False):

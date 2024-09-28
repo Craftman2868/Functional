@@ -18,7 +18,14 @@ class Canvas:
 
     def draw(self, term: Terminal):
         for line in self.data:
-            term.write_line(line)
+            l = line.rstrip()
+
+            term.write(l)
+
+            if len(l) != len(line):
+                term.clear_to_end_of_line()
+
+            term.write_line()
 
     def get_at(self, x: int, y: int):
         # assert 0 <= x < self.w  ## Will be checked in get_line_part()
@@ -177,7 +184,7 @@ class StylizedCanvas(Canvas):
             for c, s in zip(line, style):
                 term.render.set_style(s, False)
                 term.render.write(c, False)
-            term.write_line("", False)
+            term.write_line(flush=False)
 
         term.reset(True)
 
@@ -237,7 +244,7 @@ class StylizedCanvas(Canvas):
     def copy_line(self, dest: "StylizedCanvas", y: int, dest_y: int, x: int):
         super().copy_line(dest, y, dest_y, x)
 
-        new.set_style_line(new_y, self.get_style_line_part(y, x, dest.w))
+        dest.set_style_line(dest_y, self.get_style_line(y))
 
     def copy_line_part(self, dest: "StylizedCanvas", y: int, dest_y: int, x: int):
         super().copy_line_part(dest, y, dest_y, x)
