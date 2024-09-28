@@ -1,3 +1,4 @@
+from typing import Self
 from terminal import Terminal
 
 
@@ -45,19 +46,17 @@ class Canvas:
         assert 0 <= y < self.h
 
         for line in text.split("\n"):
-            while (lw := len(line)) > (pw := self.w - x):
+            while True:
+                pw = min(self.w - x, len(line))
                 yield x, y, line[:pw]
                 line = line[pw:]
                 y += 1
                 if y >= self.h:
                     return
                 x = 0
-            if lw:
-                yield x, y, line
-            y += 1
-            if y >= self.h:
-                return
-            x = 0
+
+                if not line:
+                    break
 
     def write_at(self, x: int, y: int, text: str):
         for x, y, part in self.split_text(x, y, text):
@@ -106,6 +105,9 @@ class Canvas:
 
         for y in range(self.h):
             self.set_line(y, l)
+    
+    def clear(self):
+        self.fill(DEFAULT_CHAR)
 
     def copy(self):
         new = self.__class__(self.w, self.h)
@@ -114,28 +116,28 @@ class Canvas:
 
         return new
 
-    def copy_line_part(self, dest: "Canvas", y: int, dest_y: int, x: int):
+    def copy_line_part(self, dest: Self, y: int, dest_y: int, x: int):
         assert 0 <= x < self.w
         assert 0 <= y < self.h
         assert 0 <= dest_y <= dest.w
 
         dest.set_line(dest_y, self.get_line_part(y, x, dest.w))
 
-    def blit_line_part(self, src: "Canvas", y: int, src_y: int, x: int):
+    def blit_line_part(self, src: Self, y: int, src_y: int, x: int):
         assert 0 <= x < self.w
         assert 0 <= y < self.h
         assert 0 <= src_y <= src.h
 
         self.set_line_part(y, x, src.get_line(src_y))
 
-    def copy_line(self, dest: "Canvas", y: int, dest_y: int):
+    def copy_line(self, dest: Self, y: int, dest_y: int):
         assert 0 <= y < self.h
         assert 0 <= dest_y <= dest.w
         assert dest.w == self.w
 
         dest.set_line(dest_y, self.get_line(y))
 
-    def blit_line(self, src: "Canvas", y: int, src_y: int):
+    def blit_line(self, src: Self, y: int, src_y: int):
         return src.copy_line(self, src_y, y)
 
     def sub(self, x: int, y: int, w: int, h: int):
@@ -154,7 +156,7 @@ class Canvas:
 
         return new
 
-    def blit(self, src: "Canvas", x: int, y: int):
+    def blit(self, src: Self, x: int, y: int):
         assert 0 <= x < self.w
         assert 0 <= y < self.h
         assert 0 <= src.w <= self.w - x
@@ -241,23 +243,28 @@ class StylizedCanvas(Canvas):
 
         new.styles = self.styles.copy()
 
-    def copy_line(self, dest: "StylizedCanvas", y: int, dest_y: int, x: int):
+    def copy_line(self, dest: Self, y: int, dest_y: int, x: int):
         super().copy_line(dest, y, dest_y, x)
 
         dest.set_style_line(dest_y, self.get_style_line(y))
 
-    def copy_line_part(self, dest: "StylizedCanvas", y: int, dest_y: int, x: int):
+    def copy_line_part(self, dest: Self, y: int, dest_y: int, x: int):
         super().copy_line_part(dest, y, dest_y, x)
 
         dest.set_style_line(dest_y, self.get_style_line_part(y, x, dest.w))
 
-    def blit_line_part(self, src: "StylizedCanvas", y: int, src_y: int, x: int):
+    def blit_line_part(self, src: Self, y: int, src_y: int, x: int):
         super().blit_line_part(src, y, src_y, x)
-
-        style = self.get_style_line(y)
 
         self.set_style_line_part(y, x, src.get_style_line(src_y))
 
     def fill_style(self, style: int):
         for y in range(self.h):
             self.set_style_line(y, [style] * self.w)
+
+    def clear_style(self):
+        self.fill_style(DEFAULT_STYLE)
+
+    def clear(self):
+        super().clear()
+        self.clear_style()
