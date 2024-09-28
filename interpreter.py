@@ -1,15 +1,10 @@
 from io import StringIO
 
 import math
+from typing import Self
 
 
-"""
-TODO: priority
-
-"""
-
-
-@lambda cls: cls()
+@(lambda cls: cls())
 class IgnoreMe:
     def __repr__(self):
         return "IgnoreMe"
@@ -94,7 +89,49 @@ class Variable(Value):
         return isinstance(env.get(self.name), NativeFunction)
 
 
-class Operation(Value):
+class Parenthesis(Value):
+    def __init__(self, value: Value):
+        self.value = value
+
+    def ignore(self, env: dict):
+        return self.value.ignore(env)
+
+    def get_variables(self):
+        return self.value.get_variables()
+
+    def get_errors(self, env: dict):
+        return self.value.get_errors(env)
+
+    @property
+    def expr(self):
+        return self.value.expr
+
+    def get_value(self, env: dict):
+        return self.value.get_value(env)
+
+
+class OperationType(type):
+    def __lt__(cls, other: Self):
+        if cls.priority is None:
+            raise NotImplementedError("Operation priority not defined")
+
+        return cls.priority < other.priority
+    def __gt__(cls, other: Self):
+        if cls.priority is None:
+            raise NotImplementedError("Operation priority not defined")
+
+        return cls.priority > other.priority
+
+    def __eq__(cls, other: Self):
+        if cls.priority is None:
+            raise NotImplementedError("Operation priority not defined")
+
+        return cls.priority == other.priority
+
+
+class Operation(Value, metaclass=OperationType):
+    priority = None
+
     def __init__(self, *args: Value):
         self.args = args
 
@@ -124,6 +161,8 @@ class Operation(Value):
 
 
 class Addition(Operation):
+    priority = 1
+
     def __init__(self, a1: Value, a2: Value):
         super().__init__(a1, a2)
 
@@ -139,6 +178,8 @@ class Addition(Operation):
 
 
 class Substraction(Operation):
+    priority = 1
+
     def __init__(self, a1: Value, a2: Value):
         super().__init__(a1, a2)
 
@@ -156,6 +197,8 @@ class Substraction(Operation):
 
 
 class Multiplication(Operation):
+    priority = 2
+
     def __init__(self, a1: Value, a2: Value):
         super().__init__(a1, a2)
 
@@ -173,6 +216,8 @@ class Multiplication(Operation):
 
 
 class ImplicitMultiplication(Multiplication):
+    priority = 3
+
     @property
     def expr(self):
         if not isinstance(self.args[0], Variable):
@@ -191,6 +236,8 @@ class ImplicitMultiplication(Multiplication):
 
 
 class Division(Operation):
+    priority = 2
+
     def __init__(self, a1: Value, a2: Value):
         super().__init__(a1, a2)
 
@@ -219,6 +266,8 @@ class Division(Operation):
 
 
 class Modulo(Division):
+    priority = 2
+
     @property
     def expr(self):
         return " % ".join(arg.pexpr for arg in self.args)
@@ -233,6 +282,8 @@ class Modulo(Division):
 
 
 class Power(Operation):
+    priority = 4
+
     def __init__(self, a1: Value, a2: Value):
         super().__init__(a1, a2)
 
@@ -336,6 +387,17 @@ def tokenize(file: StringIO):
 
 class CompilationError(Exception): pass
 
+
+def fusion(v1: Value, op: OperationType, v2: Value):
+    if not isinstance(v1, Operation):
+        return op(v1, v2)
+
+    if type(v1) > op:
+        return op(v1, v2)
+
+    return type(v1)(*v1.args[:-1], fusion(v1.args[-1], op, v2))
+
+
 def compile_tokens(tokens, parenthesis: bool = False):
     val = None
     op = None
@@ -350,7 +412,7 @@ def compile_tokens(tokens, parenthesis: bool = False):
                 op = ImplicitMultiplication
                 if isinstance(val, Variable):
                     val.accept_function = True
-            val = op(val, n)
+            val = fusion(val, op, n)
             op = None
 
     while True:
@@ -387,7 +449,7 @@ def compile_tokens(tokens, parenthesis: bool = False):
                 if v == Ellipsis:
                     raise CompilationError(f"unmatched '(' (pos: {pos})")
 
-                value(v)
+                value(Parenthesis(v))
             case ")":
                 if not parenthesis:
                     raise CompilationError(f"unmatched ')' (pos: {pos})")
