@@ -218,6 +218,12 @@ class Multiplication(Operation):
 class ImplicitMultiplication(Multiplication):
     priority = 3
 
+    def __init__(self, a1: Value, a2: Value):
+        if isinstance(a1, Variable):
+            a1.accept_function = True
+
+        super().__init__(a1, a2)
+
     @property
     def expr(self):
         if not isinstance(self.args[0], Variable):
@@ -410,8 +416,6 @@ def compile_tokens(tokens, parenthesis: bool = False):
         else:
             if op is None:
                 op = ImplicitMultiplication
-                if isinstance(val, Variable):
-                    val.accept_function = True
             val = fusion(val, op, n)
             op = None
 
